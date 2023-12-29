@@ -78,7 +78,7 @@ mod utils {
 
     pub type Result<T, E = Errno> = core::result::Result<T, E>;
 
-    pub fn check_error(res: i32) -> Result<usize, Errno> {
+    pub fn check_error(res: i32) -> Result<usize> {
         if res >= 0 {
             Ok(res as usize)
         } else {
@@ -87,16 +87,16 @@ mod utils {
     }
 
     /// Writes the text slice to stdout
-    pub fn write(s: &str) -> Result<usize, Errno> {
+    pub fn write(s: &str) -> Result<usize> {
         write_u8(s.as_bytes())
     }
 
     /// Same as `write` but for arbitrary data
-    pub fn write_u8(buf: &[u8]) -> Result<usize, Errno> {
+    pub fn write_u8(buf: &[u8]) -> Result<usize> {
         check_error(unsafe { crate::syscalls::write(STDOUT, buf.as_ptr() as *const _, buf.len()) })
     }
 
-    pub fn read_u8(buf: &mut [u8]) -> Result<usize, Errno> {
+    pub fn read_u8(buf: &mut [u8]) -> Result<usize> {
         check_error(unsafe { crate::syscalls::read(STDIN, buf.as_ptr() as *mut _, buf.len()) })
     }
 
