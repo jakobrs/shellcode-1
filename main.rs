@@ -5,7 +5,7 @@
 
 use core::panic::PanicInfo;
 
-mod ctypes {
+pub mod ctypes {
     //! Type aliases for C types
 
     #![allow(non_camel_case_types)]
@@ -14,7 +14,7 @@ mod ctypes {
     pub type size_t = usize;
 }
 
-mod syscalls {
+pub mod syscalls {
     //! Direct syscalls
 
     use crate::ctypes::*;
@@ -62,7 +62,7 @@ mod syscalls {
     }
 }
 
-mod utils {
+pub mod utils {
     //! Convenience functions
 
     pub const STDIN: crate::ctypes::int = 0;
@@ -121,7 +121,7 @@ fn panic_handler(_panic_info: &PanicInfo) -> ! {
     loop {}
 }
 
-mod stdlib_stuff {
+pub mod stdlib_stuff {
     pub struct ExitCode(pub i32);
 
     impl ExitCode {
@@ -163,7 +163,7 @@ mod stdlib_stuff {
     impl<T> Termination for Result<T, crate::utils::Errno> {
         fn report(self) -> ExitCode {
             match self {
-                Ok(v) => ExitCode::SUCCESS,
+                Ok(_v) => ExitCode::SUCCESS,
                 Err(crate::utils::Errno(err)) => ExitCode(err),
             }
         }
