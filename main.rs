@@ -1,3 +1,5 @@
+#![feature(never_type)]
+#![feature(error_in_core)]
 #![no_std]
 #![no_main]
 
@@ -66,16 +68,36 @@ mod utils {
     pub const STDIN: crate::ctypes::int = 0;
     pub const STDOUT: crate::ctypes::int = 1;
 
+    pub struct Errno(pub i32);
+
+    impl<T: core::error::Error> From<T> for Errno {
+        fn from(_value: T) -> Self {
+            Self(-1)
+        }
+    }
+
+    pub type Result<T, E = Errno> = core::result::Result<T, E>;
+
+    pub fn check_error(res: i32) -> Result<usize, Errno> {
+        if res >= 0 {
+            Ok(res as usize)
+        } else {
+            Err(Errno(-res))
+        }
+    }
+
     /// Writes the text slice to stdout
-    pub fn write(s: &str) {
-        write_u8(s.as_bytes());
+    pub fn write(s: &str) -> Result<usize, Errno> {
+        write_u8(s.as_bytes())
     }
 
     /// Same as `write` but for arbitrary data
-    pub fn write_u8(buf: &[u8]) {
-        unsafe {
-            crate::syscalls::write(STDOUT, buf.as_ptr() as *const _, buf.len());
-        }
+    pub fn write_u8(buf: &[u8]) -> Result<usize, Errno> {
+        check_error(unsafe { crate::syscalls::write(STDOUT, buf.as_ptr() as *const _, buf.len()) })
+    }
+
+    pub fn read_u8(buf: &mut [u8]) -> Result<usize, Errno> {
+        check_error(unsafe { crate::syscalls::read(STDIN, buf.as_ptr() as *mut _, buf.len()) })
     }
 
     #[inline(always)]
@@ -99,50 +121,64 @@ fn panic_handler(_panic_info: &PanicInfo) -> ! {
     loop {}
 }
 
-#[inline(never)]
-fn print_number(mut n: u32) {
-    if n == 0 {
-        utils::write("0");
-        return;
+mod stdlib_stuff {
+    pub struct ExitCode(pub i32);
+
+    impl ExitCode {
+        pub const SUCCESS: ExitCode = ExitCode(0);
+        pub const FAILURE: ExitCode = ExitCode(1);
     }
 
-    const SIZE: usize = 10;
-
-    let mut buf = [0u8; SIZE];
-    let mut length = 0;
-
-    while n != 0 {
-        unsafe { utils::assume_in_range(SIZE - length - 1, 0..SIZE) }
-        buf[SIZE - length - 1] = b'0' + (n % 10) as u8;
-        n /= 10;
-        length += 1;
+    pub trait Termination {
+        fn report(self) -> ExitCode;
     }
 
-    unsafe { utils::assume_in_range(SIZE - length - 1, 0..SIZE) }
-    utils::write_u8(&buf[SIZE - length - 1..]);
+    impl Termination for ! {
+        fn report(self) -> ExitCode {
+            match self {}
+        }
+    }
+
+    impl Termination for ExitCode {
+        fn report(self) -> ExitCode {
+            self
+        }
+    }
+
+    impl Termination for () {
+        fn report(self) -> ExitCode {
+            ExitCode::SUCCESS
+        }
+    }
+
+    // impl<T: Termination, E> Termination for Result<T, E> {
+    //     fn report(self) -> ExitCode {
+    //         match self {
+    //             Ok(v) => v.report(),
+    //             Err(_) => ExitCode::FAILURE,
+    //         }
+    //     }
+    // }
+
+    impl<T> Termination for Result<T, crate::utils::Errno> {
+        fn report(self) -> ExitCode {
+            match self {
+                Ok(v) => ExitCode::SUCCESS,
+                Err(crate::utils::Errno(err)) => ExitCode(err),
+            }
+        }
+    }
 }
 
 #[no_mangle]
 fn _start() -> ! {
-    main();
-    unsafe { syscalls::exit(0) }
+    let result = main();
+    let exit_code = stdlib_stuff::Termination::report(result).0;
+    unsafe { syscalls::exit(exit_code) }
 }
 
-fn main() {
-    use core::str::FromStr;
-
-    unsafe {
-        utils::write("Number-tripling tool\n");
-        utils::write("Enter your number: ");
-
-        let mut buf = [0u8; 16];
-        let i = syscalls::read(5, &mut buf as *mut _, buf.len()) as usize;
-
-        utils::assume_in_range(i - 1, 0..buf.len());
-        let n: i32 =
-            i32::from_str(core::str::from_utf8_unchecked(&buf[..i - 1])).unwrap_unchecked();
-
-        utils::write("The result is: ");
-        print_number((n * 3) as u32);
-    }
+#[inline(always)]
+fn main() -> utils::Result<()> {
+    utils::write("Hello world")?;
+    Ok(())
 }
